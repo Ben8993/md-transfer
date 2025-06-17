@@ -1,110 +1,109 @@
-Sure! Here’s a Markdown-formatted landing page wiki for SonarQube UAT, suitable for internal documentation or onboarding.
+Alright — here’s a clean one-page runbook for restoring SonarQube on AKS with Azure PostgreSQL Flexible Server. Copy this to your docs, GitOps repo, or Confluence.
 
 ⸻
 
-🧪 SonarQube UAT - Landing Page
-
-Welcome to the User Acceptance Testing (UAT) Environment for SonarQube! This wiki provides a quick guide to get started with code analysis, including basic usage, setting up a project, and running your first scan with the SonarScanner.
+📄 Runbook: Restore SonarQube on AKS (Azure PostgreSQL Flexible Server)
 
 ⸻
 
-🧭 What is SonarQube?
+✅ Purpose
 
-SonarQube is a static code analysis tool that continuously inspects your codebase for bugs, vulnerabilities, code smells, and security hotspots. It helps teams maintain high code quality and enforce coding standards.
-
-The UAT environment is intended for testing your SonarQube integrations, pipelines, and permissions before deploying to production.
-
-⸻
-
-✅ Prerequisites
-
-Before using SonarQube UAT, make sure you have:
-	•	Access to the UAT SonarQube instance (URL: https://<your-uat-sonarqube-url>)
-	•	A project key and project name
-	•	A SonarQube token (generated via My Account > Security)
-	•	The SonarScanner CLI installed
-	•	Download SonarScanner
-	•	A working codebase (supported languages: Java, C#, JavaScript, Python, etc.)
+Restore SonarQube including:
+	•	Projects & issues
+	•	Groups, permission templates, users
+	•	Tokens & settings (stored in DB)
 
 ⸻
 
-🆕 Setting Up a Project
-	1.	Log in to the UAT SonarQube instance.
-	2.	Navigate to Projects > Create Project.
-	3.	Choose Manually.
-	4.	Fill in the following:
-	•	Project Key: your-project-key
-	•	Display Name: Your Project Name
-	5.	Click Set Up.
-	6.	Choose your preferred method of analysis (typically “Locally with the SonarScanner”).
-	7.	Generate a token (or reuse an existing one).
-	8.	Copy the provided analysis command — you’ll use this shortly.
+✅ Scope
+	•	SonarQube deployed via Helm on AKS
+	•	PostgreSQL hosted on Azure Flexible Server
+	•	DB backup available as .sql dump
 
 ⸻
 
-🚀 Performing an Initial Scan
-
-Once your project is created and the SonarScanner is installed, you can perform your first scan.
-
-Example: Basic Scan
-	1.	Open a terminal and navigate to the root of your project.
-	2.	Run the following command:
-
-sonar-scanner \
-  -Dsonar.projectKey=your-project-key \
-  -Dsonar.sources=. \
-  -Dsonar.host.url=https://<your-uat-sonarqube-url> \
-  -Dsonar.login=your-generated-token
-
-🔐 Never commit your SonarQube token to source control.
-
-	3.	Once the scan completes, navigate back to your SonarQube project dashboard to view the results.
+✅ Steps
 
 ⸻
 
-📦 Optional: Add a sonar-project.properties File
+1️⃣ Scale down SonarQube
 
-To simplify scanning, add a sonar-project.properties file to your project root:
+# Adjust namespace as needed
+kubectl scale deployment sonarqube-sonarqube --replicas=0 -n <namespace>
 
-sonar.projectKey=your-project-key
-sonar.projectName=Your Project Name
-sonar.sources=.
-sonar.host.url=https://<your-uat-sonarqube-url>
-sonar.login=your-generated-token
+👉 Prevents new writes during DB restore.
 
-Then simply run:
+⸻
 
-sonar-scanner
+2️⃣ Restore PostgreSQL Flexible Server
+
+Run locally or from a jump host that can connect to the DB.
+Example using psql:
+
+# Drop old DB
+psql "host=<server>.postgres.database.azure.com port=5432 dbname=postgres user=<admin>@<server> sslmode=require" \
+  -c "DROP DATABASE sonarqube;"
+
+# Recreate DB
+psql "host=<server>.postgres.database.azure.com port=5432 dbname=postgres user=<admin>@<server> sslmode=require" \
+  -c "CREATE DATABASE sonarqube;"
+
+# Restore from backup
+psql "host=<server>.postgres.database.azure.com port=5432 dbname=sonarqube user=<admin>@<server> sslmode=require" \
+  < backup.sql
+
+✅ Notes:
+	•	Replace <server> and <admin>.
+	•	Always use sslmode=require.
+	•	If you have a .dump instead of .sql, use pg_restore.
+
+⸻
+
+3️⃣ Scale SonarQube back up
+
+kubectl scale deployment sonarqube-sonarqube --replicas=1 -n <namespace>
+
+Or redeploy if configs changed:
+
+helm upgrade <release-name> sonarqube/sonarqube -n <namespace> --reuse-values
 
 
 ⸻
 
-🔍 Interpreting the Results
-
-After scanning:
-	•	View Issues: Bugs, code smells, and security vulnerabilities.
-	•	Check Coverage (if configured via test reports).
-	•	Review the Quality Gate status.
-	•	Use the Security Hotspots feature to review potential risks.
-
-⸻
-
-📚 Additional Resources
-	•	SonarQube Documentation
-	•	SonarScanner CLI Docs
-	•	Sample Projects
+4️⃣ Verify
+	•	Login to SonarQube UI.
+	•	Confirm:
+	•	✅ Projects exist
+	•	✅ Groups & permission templates match
+	•	✅ Users & tokens restored
 
 ⸻
 
-🧯 Troubleshooting
-	•	“Project not found”: Check that your projectKey matches the one created in the UAT dashboard.
-	•	Authentication failed: Regenerate your token and make sure it’s correct.
-	•	No issues appearing: Confirm that sonar.sources is set properly and contains code.
+5️⃣ Tips
+
+✅ For large restores:
+	•	Use pg_restore with parallel jobs: pg_restore -j 4 ...
+	•	Consider Azure’s point-in-time restore to spin up a clone instead of dropping live DB.
+
+✅ Backup your Helm values.yaml for disaster recovery.
+
+✅ Check DB version compatibility with your SonarQube version.
 
 ⸻
 
-For access issues, configuration support, or general questions, please contact the DevOps or Quality Engineering team.
+✅ Contact
+
+Who	Contact
+DBA	dba@company.com
+DevOps	devops@company.com
+
 
 ⸻
 
-Let me know if you’d like this tailored to a specific language or CI/CD integration (e.g., GitLab CI, Azure DevOps, Jenkins).
+📌 File: restore-sonarqube.md
+Owner: Platform Engineering
+Last Updated: <today’s date>
+
+⸻
+
+If you want, I can wrap this as a Markdown file with placeholders & comments — just say “yes, turn it into a file” and I’ll generate it instantly! 🚀
