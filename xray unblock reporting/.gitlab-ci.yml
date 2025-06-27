@@ -1,0 +1,47 @@
+stages:
+  - report
+
+variables:
+  REPORT_DIR: "xray-report"
+  RAW_VIOLATIONS: "raw_violations.json"
+
+report_xray:
+  stage: report
+  image: python:3.10
+  script:
+    - pip install requests
+    - mkdir -p $REPORT_DIR
+
+    # Step 1: Get Xray violations
+    - |
+      echo "📥 Fetching violations from Xray..."
+      curl -s -u "$JFROG_USERNAME:$JFROG_PASSWORD" \
+        -X POST "$JFROG_URL/xray/api/v1/violations" \
+        -H "Content-Type: application/json" \
+        -d '{
+              "filters": {
+                "severities": ["Critical"],
+                "violation_type": "security",
+                "watch_names": ["'"$WATCH_NAME"'"]
+              }
+            }' > $RAW_VIOLATIONS
+
+    # Step 2: Run Python to process and format the report
+    - python process_xray_report.py
+
+    # Step 3: Upload reports to Artifactory
+    - |
+      for f in xray_critical_cves_*.{json,md}; do
+        echo "⬆️ Uploading $f to Artifactory..."
+        curl -s -u "$JFROG_USERNAME:$JFROG_PASSWORD" \
+          -T "$f" "$JFROG_URL/artifactory/$OUTPUT_REPO/$f"
+        mv "$f" $REPORT_DIR/
+      done
+
+  artifacts:
+    paths:
+      - $REPORT_DIR
+    expire_in: 7 days
+  only:
+    - schedules
+    - manual
